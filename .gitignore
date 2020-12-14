@@ -1,0 +1,23 @@
+# Exclude all files without extiontions(compiled binarys)
+*
+!/**/
+!*.*
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+*.pprof
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+*.kate-swp
+
+# Config file to avoid leaking my bot token
+config.toml
