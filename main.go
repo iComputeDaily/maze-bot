@@ -1,6 +1,5 @@
 package main
 
-import "strings"
 import "context"
 import "fmt"
 import "math/rand"
@@ -17,8 +16,9 @@ import "github.com/sirupsen/logrus"
 type Discord struct {
 	ProjectName string
 	BotToken string
-	StatusMessage string
+	HelpMessage string
 	Prefix string
+	NumWorkers int
 }
 
 // Represents the config file
@@ -41,12 +41,14 @@ func (stuff *stuff) initalize() {
 	file, err := ioutil.ReadFile("config.toml")
 	if err != nil {
 		fmt.Println("Failed to read config file: ", err)
+		os.Exit(1)
 	}
 	
 	// Parse the data
 	err = toml.Unmarshal(file, &stuff.config)
 	if err != nil {
 		fmt.Println("Failed to parse file: ", err)
+		os.Exit(1)
 	}
 	
 	// Setup logging
@@ -70,43 +72,26 @@ func (stuff *stuff) initalize() {
 		// Intents: intent,
 		Logger: stuff.logger,
 		ProjectName: stuff.config.Discord.ProjectName,
-		Presence: &disgord.UpdateStatusPayload{
-			Since: nil,
-			Game: nil,
-			Status: stuff.config.Discord.StatusMessage,
-			AFK: false,
-		},
 	})
 }
 
-// Replys to messages with hey
-func messageCallback(session disgord.Session, msgEvt *disgord.MessageCreate) {
-	msgEvt.Message.Reply(context.Background(), session, "hey")
-}
-
-// Checks if the event is a message with a common greating
-func isHey(event interface{}) interface{} {
-	var msg *disgord.Message
-	
-	// Turn the event into a message
-	switch t := event.(type) {
-		case *disgord.MessageCreate:
-			msg = t.Message
-		default:
-			// Unless it's not one in witch case cancel
-			return nil
-	}
-	
-	// Check if it's a common greating word
-	if strings.EqualFold(msg.Content, "hey") ||
-		strings.EqualFold(msg.Content, "hello") ||
-		strings.EqualFold(msg.Content, "hi") {
-			// If so continue
-			return event
-		} else {
-			// Otherwise cancel
-			return nil
+// Listens for messges in the channel and deals with them
+func worker(session disgord.Session, helpEvtChan <-chan *disgord.MessageCreate, helpMsg string) {
+	for {
+		var msg *disgord.Message
+		
+		// Wait for messages
+		select {
+			case data, ok := <-helpEvtChan:
+				if !ok {
+					fmt.Println("channel is dead")
+					return
+				}
+				msg = data.Message
 		}
+		// Reply with help
+		msg.Reply(context.Background(), session, helpMsg)
+	}
 }
 
 func main() {
@@ -122,12 +107,27 @@ func main() {
 	}
 	fmt.Println(inviteURL)
 	
+	// Set up channels and workers
+	helpEvtChan := make(chan *disgord.MessageCreate, 100) // BUG(iComputeDaily): No idea how big the buffer should be
+	for workerNum := 0; workerNum < stuff.config.Discord.NumWorkers; workerNum++ {
+		go worker(stuff.client, helpEvtChan, stuff.config.Discord.HelpMessage)
+	}
+	
 	// Create filter to avoid loop where bot responds to it's own messages
 	filter, _ := std.NewMsgFilter(context.Background(), stuff.client)
+	filter.SetPrefix(stuff.config.Discord.Prefix + "maze ")
+	
+	// Create filter to tell if it's the help command
+	filterHelp, _ := std.NewMsgFilter(context.Background(), stuff.client)
+	filterHelp.SetPrefix("help")
 	
 	// Create middleware to log messages
 	logFilter, _ := std.NewLogFilter(stuff.client)
 	
-	// Register basic handler
-	stuff.client.Gateway().WithMiddleware(filter.NotByBot, isHey, logFilter.LogMsg).MessageCreate(messageCallback)
+	// Register handler for "help" command
+	stuff.client.Gateway().WithMiddleware(filter.NotByBot, // Make shure message isn't by the bot
+		std.CopyMsgEvt, // Copy the message so that other handlers don't have problems
+		filter.HasPrefix, filter.StripPrefix, // Check if has "!maze"
+		filterHelp.HasPrefix, filterHelp.StripPrefix, // Check if has "help"
+		logFilter.LogMsg).MessageCreateChan(helpEvtChan) // Log message and push to channel
 }
