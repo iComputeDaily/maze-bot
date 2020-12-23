@@ -7,23 +7,29 @@ import "time"
 import "os"
 import "io/ioutil"
 import toml "github.com/pelletier/go-toml"
-// import "github.com/iComputeDaily/maze"
+import "github.com/iComputeDaily/maze"
 import "github.com/andersfylling/disgord"
 import "github.com/andersfylling/disgord/std"
 import "github.com/sirupsen/logrus"
 
 // Represents config options related to discord
-type Discord struct {
+type General struct {
 	ProjectName string
-	BotToken string
 	HelpMessage string
 	Prefix string
+	DefaultMazeWidth int
+	DefaultMazeHeight int
+}
+
+type Technical struct {
 	NumWorkers int
+	BotToken string
 }
 
 // Represents the config file
 type Config struct {
-	Discord Discord
+	General General
+	Technical Technical
 }
 
 // Holds global information for the server
@@ -68,15 +74,21 @@ func (stuff *stuff) initalize() {
 	
 	// Make a disgord client based on config
 	stuff.client = disgord.New(disgord.Config {
-		BotToken: stuff.config.Discord.BotToken,
+		BotToken: stuff.config.Technical.BotToken,
 		// Intents: intent,
 		Logger: stuff.logger,
-		ProjectName: stuff.config.Discord.ProjectName,
+		ProjectName: stuff.config.General.ProjectName,
 	})
 }
 
 // Listens for messges in the channel and deals with them
-func worker(session disgord.Session, helpEvtChan <-chan *disgord.MessageCreate, helpMsg string) {
+func (stuff *stuff) worker(
+	helpEvtChan <-chan *disgord.MessageCreate,
+	genEvtChan <-chan *disgord.MessageCreate) {
+	
+	var helpMsg = stuff.config.General.HelpMessage
+	var mazeWidth, mazeHeight = stuff.config.General.DefaultMazeWidth, stuff.config.General.DefaultMazeHeight
+	
 	for {
 		var msg *disgord.Message
 		
@@ -88,9 +100,24 @@ func worker(session disgord.Session, helpEvtChan <-chan *disgord.MessageCreate, 
 					return
 				}
 				msg = data.Message
+				
+				// Reply with help
+				msg.Reply(context.Background(), stuff.client, helpMsg)
+				
+			case data, ok := <-genEvtChan:
+				if !ok {
+					fmt.Println("channel is dead")
+					return
+				}
+				msg = data.Message
+				
+				// Generate a maze
+				var maze maze.Maze = &maze.GTreeMaze{}
+				maze.Generate(mazeWidth, mazeHeight)
+				
+				msg.Reply(context.Background(), stuff.client, "```maze\n" + maze.Stringify() + "```")
+				maze.ReadMaze("```maze\n" + maze.Stringify() + "```")
 		}
-		// Reply with help
-		msg.Reply(context.Background(), session, helpMsg)
 	}
 }
 
@@ -108,18 +135,24 @@ func main() {
 	fmt.Println(inviteURL)
 	
 	// Set up channels and workers
-	helpEvtChan := make(chan *disgord.MessageCreate, 100) // BUG(iComputeDaily): No idea how big the buffer should be
-	for workerNum := 0; workerNum < stuff.config.Discord.NumWorkers; workerNum++ {
-		go worker(stuff.client, helpEvtChan, stuff.config.Discord.HelpMessage)
+	// BUG(iComputeDaily): No idea how big the buffer should be
+	helpEvtChan := make(chan *disgord.MessageCreate, 100)
+	genEvtChan := make(chan *disgord.MessageCreate, 100)
+	for workerNum := 0; workerNum < stuff.config.Technical.NumWorkers; workerNum++ {
+		go stuff.worker(helpEvtChan, genEvtChan)
 	}
 	
 	// Create filter to avoid loop where bot responds to it's own messages
 	filter, _ := std.NewMsgFilter(context.Background(), stuff.client)
-	filter.SetPrefix(stuff.config.Discord.Prefix + "maze ")
+	filter.SetPrefix(stuff.config.General.Prefix + "maze ")
 	
 	// Create filter to tell if it's the help command
 	filterHelp, _ := std.NewMsgFilter(context.Background(), stuff.client)
 	filterHelp.SetPrefix("help")
+	
+	// Create filter to tell if its a generation request
+	filterGen, _ := std.NewMsgFilter(context.Background(), stuff.client)
+	filterGen.SetPrefix("gen")
 	
 	// Create middleware to log messages
 	logFilter, _ := std.NewLogFilter(stuff.client)
@@ -130,4 +163,12 @@ func main() {
 		filter.HasPrefix, filter.StripPrefix, // Check if has "!maze"
 		filterHelp.HasPrefix, filterHelp.StripPrefix, // Check if has "help"
 		logFilter.LogMsg).MessageCreateChan(helpEvtChan) // Log message and push to channel
+		
+	// Register handler for "generate" command
+	stuff.client.Gateway().WithMiddleware(filter.NotByBot, // Make shure message isn't by the bot
+		std.CopyMsgEvt, // Copy the message so that other handlers don't have problems
+		filter.HasPrefix, filter.StripPrefix, // Check if has "!maze"
+		filterGen.HasPrefix, filterGen.StripPrefix, // Check if has "gen"
+		logFilter.LogMsg).MessageCreateChan(genEvtChan) // Log message and push to channel
+										
 }

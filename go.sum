@@ -22,6 +22,8 @@ github.com/google/gofuzz v1.1.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/
 github.com/gorilla/websocket v1.4.1/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/iComputeDaily/maze v0.0.0-20201213165952-f58d4b36da23 h1:QXs9uL6ip9ZWseXpE58U08lq83ErWZTg+oA6tqjNLNQ=
 github.com/iComputeDaily/maze v0.0.0-20201213165952-f58d4b36da23/go.mod h1:sP3aGIkH2IUrBGQo3QVmDW2RN1jx6x3LaQtGmvFd/Ug=
+github.com/iComputeDaily/maze v0.0.0-20201221151754-d45f4b24396a h1:f4ESFNm52HS25IcOrxV9W/qz4y+lAxPuHrioyN3DFAA=
+github.com/iComputeDaily/maze v0.0.0-20201221151754-d45f4b24396a/go.mod h1:sP3aGIkH2IUrBGQo3QVmDW2RN1jx6x3LaQtGmvFd/Ug=
 github.com/json-iterator/go v1.1.9/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/uOdHXbAo4=
 github.com/klauspost/compress v1.10.3 h1:OP96hzwJVBIHYU52pVTI6CczrxPvrGfgqF9N5eTO0Q8=
 github.com/klauspost/compress v1.10.3/go.mod h1:aoV0uJVorq1K+umq18yTdKaF57EivdYsUV+/s2qKfXs=
