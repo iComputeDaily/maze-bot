@@ -21,6 +21,7 @@ type General struct {
 	DefaultMazeHeight int
 }
 
+// Represents more technical config options
 type Technical struct {
 	NumWorkers int
 	BotToken string
@@ -39,6 +40,7 @@ type stuff struct {
 	client *disgord.Client
 }
 
+// Sets up disgord and parses config
 func (stuff *stuff) initalize() {
 	// Initalize the random number generator
 	rand.Seed(time.Now().UTC().UnixNano())
@@ -87,7 +89,6 @@ func (stuff *stuff) worker(
 	genEvtChan <-chan *disgord.MessageCreate) {
 	
 	var helpMsg = stuff.config.General.HelpMessage
-	var mazeWidth, mazeHeight = stuff.config.General.DefaultMazeWidth, stuff.config.General.DefaultMazeHeight
 	
 	for {
 		var msg *disgord.Message
@@ -110,13 +111,20 @@ func (stuff *stuff) worker(
 					return
 				}
 				msg = data.Message
-				
-				// Generate a maze
-				var maze maze.Maze = &maze.GTreeMaze{}
-				maze.Generate(mazeWidth, mazeHeight)
-				
-				msg.Reply(context.Background(), stuff.client, "```maze\n" + maze.Stringify() + "```")
-				maze.ReadMaze("```maze\n" + maze.Stringify() + "```")
+
+				// Get the maze from the message
+				coolMaze, err := stuff.getMaze(msg)
+				if err != nil {
+					msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", err))
+
+				} else {
+					// Reply to the message with the maze
+					msg.Reply(context.Background(), stuff.client, "```maze\n" + coolMaze.Stringify() + "```")
+
+					// Read the maze for debugging
+					var maze2 *maze.DummyMaze = &maze.DummyMaze{}
+					maze2.ReadMaze("```maze\n" + coolMaze.Stringify() + "```")
+				}
 		}
 	}
 }
