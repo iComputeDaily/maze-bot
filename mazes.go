@@ -3,7 +3,6 @@ package main
 import "strconv"
 import "fmt"
 import "errors"
-import "regexp"
 import "strings"
 import "github.com/iComputeDaily/maze"
 import "github.com/andersfylling/disgord"
@@ -13,9 +12,11 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 	var width = stuff.config.General.DefaultMazeWidth
 	var height = stuff.config.General.DefaultMazeHeight
 
+	// idk
+	var err error
+
 	// Make a maze to hold the maze
 	var coolMaze maze.Maze = &maze.GTreeMaze{}
-
 
 	// Get arguments from message
 	args := strings.Split(msg.Content, " ")
@@ -25,18 +26,10 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 
 	for i, arg := range args {
 		// Checks weather the arg is a size
-		isSize, err := regexp.MatchString(`^(?i)-?\d+x-?\d+$`, arg)
-		// Make shure the regrex didn't break
-		if err != nil {
-			return nil, errors.New("Regrex didn't work; This is probobly a bug.")
-		}
+		isSize := isSizeRegex.MatchString(arg)
 
 		// Checks weather the arg is a type
-		isType, err := regexp.MatchString(`^(?i)spikey|windy|loopy$`, arg)
-		// Make shure the regrex didn't break
-		if err != nil {
-			return nil, errors.New("Regrex didn't work; This is probobly a bug.")
-		}
+		isType := isTypeRegex.MatchString(arg)
 
 		switch {
 			// If the argument is empty
