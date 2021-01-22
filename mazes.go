@@ -21,9 +21,6 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 	// Get arguments from message
 	args := strings.Split(msg.Content, " ")
 
-	// Debugging
-	fmt.Println("args:", args)
-
 	for i, arg := range args {
 		// Checks weather the arg is a size
 		isSize := isSizeRegex.MatchString(arg)
@@ -39,7 +36,7 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 
 			// Too many argunments
 			case i >= 3:
-				return nil, errors.New("Too many arguments!")
+				return nil, errors.New("Too many arguments. Run `!maze help` for usage help.")
 
 			// The argument is a size
 			case isSize:
@@ -69,7 +66,7 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 
 			// The argument is invaled
 			default:
-				return nil, errors.New(fmt.Sprintln("Unknown argument `", arg, "`.\nRun `!maze help` for usage."))
+				return nil, errors.New(fmt.Sprintln("Unknown argument `", arg, "`. Run `!maze help` for usage help."))
 		}
 	}
 
@@ -81,6 +78,9 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 
 	// Generate a maze
 	coolMaze.Generate(width, height)
+
+	// Set the position to outside the map so The player marker won't display
+	coolMaze.SetPos(-1, -1)
 
 	return coolMaze, nil
 }

@@ -1,6 +1,5 @@
 package main
 
-import "github.com/iComputeDaily/maze"
 import "github.com/andersfylling/disgord"
 import "context"
 import "fmt"
@@ -43,10 +42,6 @@ func (stuff *stuff) worker(
 				} else {
 					// Reply to the message with the maze
 					msg.Reply(context.Background(), stuff.client, "```maze\n" + coolMaze.Stringify() + "```")
-
-					// Read the maze for debugging
-					var maze2 *maze.DummyMaze = &maze.DummyMaze{}
-					maze2.ReadMaze("```maze\n" + coolMaze.Stringify() + "```")
 				}
 
 			case data, ok := <-invalidEventChan:
@@ -62,10 +57,10 @@ func (stuff *stuff) worker(
 				// If the user didn't input a command
 				if cmd == "" {
 					msg.Reply(context.Background(), stuff.client,
-					"Error: No command provided, use `!maze help` for help.")
+					"Error: No command provided. Use `!maze help` for usage help.")
 				} else { // If the did
 					msg.Reply(context.Background(), stuff.client,
-					fmt.Sprintln("Error: Invalid command `", cmd, "`\nUse `!maze help` for help."))
+					fmt.Sprintln("Error: Invalid command `", cmd, "`. Use `!maze help` for usage help."))
 				}
 		}
 	}

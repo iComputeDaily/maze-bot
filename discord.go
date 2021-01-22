@@ -168,20 +168,22 @@ func main() {
 		std.CopyMsgEvt, // Copy the message so that other handlers don't have problems
 		filter.HasPrefix, filter.StripPrefix, // Check if has "!maze "
 		filterHelp.HasPrefix, filterHelp.StripPrefix, // Check if has "help"
-		logFilter.LogMsg).MessageCreateChan(helpEvtChan) // Log message and push to channel
+		).MessageCreateChan(helpEvtChan) // Log message and push to channel
 		
 	// Register handler for "generate" command
 	stuff.client.Gateway().WithMiddleware(filter.NotByBot, // Make shure message isn't by the bot
 		std.CopyMsgEvt, // Copy the message so that other handlers don't have problems
 		filter.HasPrefix, filter.StripPrefix, // Check if has "!maze "
 		filterGen.HasPrefix, filterGen.StripPrefix, // Check if has "gen"
-		logFilter.LogMsg).MessageCreateChan(genEvtChan) // Log message and push to channel
+		).MessageCreateChan(genEvtChan) // Push to channel
 
 	// Register handler for only "!maze"
 	stuff.client.Gateway().WithMiddleware(filter.NotByBot, // Make shure message isn't by the bot
 		std.CopyMsgEvt, // Copy the message so that other handlers don't have problems
-		filterNoSpace.HasPrefix, filterNoSpace.StripPrefix, // Check if has "!maze"
+		// Check if has "!maze", and log message if so
+		// Note that this will log will log all messeges with "!maze" because we have only checked for that so far
+		filterNoSpace.HasPrefix, logFilter.LogMsg, filterNoSpace.StripPrefix,
 		isNotValid, // Check to see is the message isn't a valid command
-		logFilter.LogMsg).MessageCreateChan(invalidEventChan) // Log message and push to channel
+		).MessageCreateChan(invalidEventChan) // Push to channel
 										
 }
