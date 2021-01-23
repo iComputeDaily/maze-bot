@@ -11,6 +11,7 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 	// Initalize arguments to defaults
 	var width = stuff.config.General.DefaultMazeWidth
 	var height = stuff.config.General.DefaultMazeHeight
+	var loopy = false
 
 	// idk
 	var err error
@@ -61,7 +62,8 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 				case "spikey":
 					coolMaze = &maze.KruskalMaze{}
 				case "loopy":
-					return nil, errors.New("Type `loopy` not yet implimented.")
+					coolMaze = &maze.GTreeMaze{}
+					loopy = true
 				}
 
 			// The argument is invaled
@@ -78,6 +80,11 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 
 	// Generate a maze
 	coolMaze.Generate(width, height)
+
+	// If type loopy make loopy
+	if loopy == true {
+		coolMaze.Loopify()
+	}
 
 	// Set the position to outside the map so The player marker won't display
 	coolMaze.SetPos(-1, -1)
