@@ -10,7 +10,8 @@ import "io/ioutil"
 import toml "github.com/pelletier/go-toml"
 import "github.com/andersfylling/disgord"
 import "github.com/andersfylling/disgord/std"
-import "github.com/sirupsen/logrus"
+import "go.uber.org/zap"
+import "encoding/json"
 
 // Regex to match maze type
 var isTypeRegex *regexp.Regexp
@@ -45,7 +46,7 @@ type Config struct {
 // Holds global information for the server
 type stuff struct {
 	config Config
-	logger *logrus.Logger
+	logger *zap.Logger
 	client *disgord.Client
 }
 
@@ -57,25 +58,52 @@ func (stuff *stuff) initalize() {
 	// Read the config file
 	file, err := ioutil.ReadFile("config.toml")
 	if err != nil {
-		fmt.Println("Failed to read config file: ", err)
+		fmt.Println("Failed to read config file:", err)
 		os.Exit(1)
 	}
 	
 	// Parse the data
 	err = toml.Unmarshal(file, &stuff.config)
 	if err != nil {
-		fmt.Println("Failed to parse file: ", err)
+		fmt.Println("Failed to parse file:", err)
 		os.Exit(1)
 	}
 	
 	// Setup logging
-	stuff.logger = &logrus.Logger{
-		Out:       os.Stdout,
-		Formatter: new(logrus.TextFormatter),
-		Hooks:     make(logrus.LevelHooks),
-		Level:     logrus.DebugLevel,
+	rawJSON := []byte(`{
+			"level": "info",
+			"encoding": "json",
+			"development": false,
+			"outputPaths": ["stdout"],
+			"encoderConfig": {
+				"timeEncoder": "rfc3339",
+				"levelEncoder": "capital",
+				"durationEncoder": "string",
+				"callerEncoder": "short",
+
+				"callerKey":      "CALLER",
+				"nameKey":        "NAME",
+				"timeKey":        "TIME",
+				"levelKey":       "LVL",
+				"messageKey":     "MSG",
+				"stacktraceKey":  "STACKTRACE"
+			}
+		}`)
+
+//				"callerKey":      "CALLER",
+
+	var logCfg zap.Config
+	if err := json.Unmarshal(rawJSON, &logCfg); err != nil {
+		fmt.Println("failed to parse logger config:", err)
+		os.Exit(1)
 	}
-	
+
+	stuff.logger, err = logCfg.Build()
+	if err != nil {
+		fmt.Println("Failed to create logger:", err)
+		os.Exit(1)
+	}
+
 	// Do some bitmath
 	// var intent disgord.Intent
 	// intent |= disgord.IntentDirectMessages
@@ -87,7 +115,7 @@ func (stuff *stuff) initalize() {
 	stuff.client = disgord.New(disgord.Config {
 		BotToken: stuff.config.Technical.BotToken,
 		// Intents: intent,
-		Logger: stuff.logger,
+		Logger: stuff.logger.Sugar(),
 		ProjectName: stuff.config.General.ProjectName,
 	})
 
@@ -126,14 +154,15 @@ func main() {
 	var stuff stuff
 	stuff.initalize()
 	defer stuff.client.Gateway().StayConnectedUntilInterrupted()
+	defer stuff.logger.Sync()
 	
 	// Print invite link
 	inviteURL, err := stuff.client.BotAuthorizeURL()
 	if err != nil {
-		panic(err)
+		stuff.logger.DPanic("Failed to create invite link!", zap.Error(err))
 	}
-	fmt.Println(inviteURL)
-	
+	stuff.logger.Info("Invite url", zap.String("URL", inviteURL.String()))
+
 	// Set up channels and workers
 	// BUG(iComputeDaily): No idea how big the buffer should be
 	helpEvtChan := make(chan *disgord.MessageCreate, 100)

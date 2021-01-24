@@ -7,8 +7,7 @@ require (
 	github.com/iComputeDaily/maze v0.0.0-20201221151754-d45f4b24396a
 	github.com/pelletier/go-toml v1.8.1
 	github.com/sirupsen/logrus v1.7.0
+	go.uber.org/zap v1.16.0
 )
 
-replace (
-	github.com/iComputeDaily/maze => ../maze
-)
+replace github.com/iComputeDaily/maze => ../maze

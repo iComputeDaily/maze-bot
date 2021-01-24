@@ -19,7 +19,7 @@ func (stuff *stuff) worker(
 		select {
 			case data, ok := <-helpEvtChan:
 				if !ok {
-					fmt.Println("channel is dead")
+					stuff.logger.Panic("Help channel is dead!")
 					return
 				}
 				msg = data.Message
@@ -29,7 +29,7 @@ func (stuff *stuff) worker(
 				
 			case data, ok := <-genEvtChan:
 				if !ok {
-					fmt.Println("channel is dead")
+					stuff.logger.Panic("Gen channel is dead!")
 					return
 				}
 				msg = data.Message
@@ -46,7 +46,7 @@ func (stuff *stuff) worker(
 
 			case data, ok := <-invalidEventChan:
 				if !ok {
-					fmt.Println("channel is dead")
+					stuff.logger.Panic("Invalid channel is dead!")
 					return
 				}
 				msg = data.Message

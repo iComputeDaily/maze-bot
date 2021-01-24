@@ -6,6 +6,7 @@ import "errors"
 import "strings"
 import "github.com/iComputeDaily/maze"
 import "github.com/andersfylling/disgord"
+import "go.uber.org/zap"
 
 func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 	// Initalize arguments to defaults
@@ -47,11 +48,13 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 				// Set the width and height to non-default
 				width, err = strconv.Atoi(nums[0])
 				if err != nil {
-					return nil, errors.New("Atoi didn't work; This is probobly a bug.")
+					stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[0]), zap.String("MSG", msg.Content))
+					return nil, errors.New("Something went wrong. Sorry")
 				}
 				height, err = strconv.Atoi(nums[1])
 				if err != nil {
-					return nil, errors.New("Atoi didn't work; This is probobly a bug.")
+					stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[1]), zap.String("MSG", msg.Content))
+					return nil, errors.New("Something went wrong. Sorry")
 				}
 
 			// The argument is a type
