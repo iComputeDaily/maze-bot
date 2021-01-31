@@ -90,8 +90,6 @@ func (stuff *stuff) initalize() {
 			}
 		}`)
 
-//				"callerKey":      "CALLER",
-
 	var logCfg zap.Config
 	if err := json.Unmarshal(rawJSON, &logCfg); err != nil {
 		fmt.Println("failed to parse logger config:", err)
