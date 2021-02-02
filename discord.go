@@ -26,10 +26,19 @@ var spaceSepRegex *regexp.Regexp
 // Represents config options related to discord
 type General struct {
 	ProjectName string
-	HelpMessage string
 	Prefix string
 	DefaultMazeWidth int
 	DefaultMazeHeight int
+}
+
+type Messages struct {
+	HelpMessage string
+	NoCmdError string
+	InvalidCmdError string
+	TooManyArgsError string
+	UnknownArgError string
+	SizeError string
+	GenericError string
 }
 
 // Represents more technical config options
@@ -41,6 +50,7 @@ type Technical struct {
 // Represents the config file
 type Config struct {
 	General General
+	Messages Messages
 	Technical Technical
 }
 

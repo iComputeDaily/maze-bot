@@ -7,29 +7,30 @@ import "strings"
 
 // Listens for messges in the channel and deals with them
 func (stuff *stuff) worker(msgEvtChan <-chan *disgord.MessageCreate) {
-	
-	var helpMsg = strings.ReplaceAll(stuff.config.General.HelpMessage, "<prefix>", "!")
-	
 	for {
 		var msg *disgord.Message
 		
 		// Wait for messages
 		select {
 			case data, ok := <-msgEvtChan:
+				// Get the message
 				if !ok {
 					stuff.logger.Panic("Invalid channel is dead!")
 					return
 				}
 				msg = data.Message
 
+				// Whitespace might cause problems
 				msg.Content = strings.TrimSpace(msg.Content)
+
+				var prefix = "!"
 
 				switch {
 					case strings.HasPrefix(msg.Content, "gen"):
 						msg.Content = strings.TrimPrefix(msg.Content, "gen")
 
 						// Get the maze from the message
-						coolMaze, err := stuff.getMaze(msg)
+						coolMaze, err := stuff.getMaze(msg, prefix)
 						if err != nil {
 							msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", err))
 
@@ -39,6 +40,9 @@ func (stuff *stuff) worker(msgEvtChan <-chan *disgord.MessageCreate) {
 						}
 
 					case strings.HasPrefix(msg.Content, "help"):
+						// Replace placeholders in help message
+						helpMsg := strings.ReplaceAll(stuff.config.Messages.HelpMessage, "<prefix>", prefix)
+
 						// Reply with help
 						msg.Reply(context.Background(), stuff.client, helpMsg)
 
@@ -48,11 +52,16 @@ func (stuff *stuff) worker(msgEvtChan <-chan *disgord.MessageCreate) {
 
 						// If the user didn't input a command
 						if cmd == "" {
-							msg.Reply(context.Background(), stuff.client,
-							"Error: No command provided. Use `!maze help` for usage help.")
+							// Subsitute values
+							noCmdError := strings.ReplaceAll(stuff.config.Messages.NoCmdError, "<prefix>", prefix)
+							// Reply with message
+							msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", noCmdError))
 						} else { // If the did
-							msg.Reply(context.Background(), stuff.client,
-							fmt.Sprintln("Error: Invalid command `", cmd, "`. Use `!maze help` for usage help."))
+							// Subsitute values
+							invalidCmdError := strings.ReplaceAll(stuff.config.Messages.InvalidCmdError, "<prefix>", prefix)
+							invalidCmdError = strings.ReplaceAll(invalidCmdError, "<command>", cmd)
+							// Reply with message
+							msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", invalidCmdError))
 						}
 				}
 		}
