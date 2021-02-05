@@ -6,7 +6,7 @@ import "fmt"
 import "strings"
 
 // Listens for messges in the channel and deals with them
-func (stuff *stuff) worker(msgEvtChan <-chan *disgord.MessageCreate) {
+func worker(msgEvtChan <-chan *disgord.MessageCreate) {
 	for {
 		var msg *disgord.Message
 		
@@ -20,17 +20,21 @@ func (stuff *stuff) worker(msgEvtChan <-chan *disgord.MessageCreate) {
 				}
 				msg = data.Message
 
+				// Get the prefix from the message
+				prefix := string(msg.Content[0])
+
+				// Trim the prefix
+				msg.Content = strings.TrimPrefix(msg.Content, fmt.Sprint(prefix, "maze"))
+
 				// Whitespace might cause problems
 				msg.Content = strings.TrimSpace(msg.Content)
-
-				var prefix = "!"
 
 				switch {
 					case strings.HasPrefix(msg.Content, "gen"):
 						msg.Content = strings.TrimPrefix(msg.Content, "gen")
 
 						// Get the maze from the message
-						coolMaze, err := stuff.getMaze(msg, prefix)
+						coolMaze, err := getMaze(msg, prefix)
 						if err != nil {
 							msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", err))
 

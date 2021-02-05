@@ -7,7 +7,7 @@ import "github.com/iComputeDaily/maze"
 import "github.com/andersfylling/disgord"
 import "go.uber.org/zap"
 
-func (stuff *stuff) getMaze(msg *disgord.Message, prefix string) (maze.Maze, error) {
+func getMaze(msg *disgord.Message, prefix string) (maze.Maze, error) {
 	// Initalize arguments to defaults
 	var width = stuff.config.General.DefaultMazeWidth
 	var height = stuff.config.General.DefaultMazeHeight

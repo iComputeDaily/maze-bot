@@ -13,6 +13,9 @@ import "github.com/andersfylling/disgord/std"
 import "go.uber.org/zap"
 import "encoding/json"
 import "strings"
+import "database/sql"
+import _ "github.com/jackc/pgx/v4/stdlib"
+import "strconv"
 
 // Regex to match maze type
 var isTypeRegex *regexp.Regexp
@@ -45,6 +48,7 @@ type Messages struct {
 type Technical struct {
 	NumWorkers int
 	BotToken string
+	DBUrl string
 }
 
 // Represents the config file
@@ -55,14 +59,17 @@ type Config struct {
 }
 
 // Holds global information for the server
-type stuff struct {
+type things struct {
 	config Config
 	logger *zap.Logger
 	client *disgord.Client
+	db *sql.DB
 }
 
+var stuff things
+
 // Sets up disgord and parses config
-func (stuff *stuff) initalize() {
+func initalize() {
 	// Initalize the random number generator
 	rand.Seed(time.Now().UTC().UnixNano())
 	
@@ -133,9 +140,17 @@ func (stuff *stuff) initalize() {
 	isSizeRegex = regexp.MustCompile(`^(?i)-?\d+x-?\d+$`)
 	isCmdRegex = regexp.MustCompile(`^ gen|help`)
 	spaceSepRegex = regexp.MustCompile(`\S+`)
+
+	// Setup the database
+	stuff.db, err = sql.Open("pgx", stuff.config.Technical.DBUrl)
+
+	if err != nil {
+		stuff.logger.Panic("Failed to establish a database connection!",
+		zap.String("URL", stuff.config.Technical.DBUrl), zap.Error(err))
+	}
 }
 
-// Checks if the event isn't valid
+// Checks if the message has the costom prefix
 func stripCostomPrefixIfExists(event interface{}) interface{} {
 	var msg *disgord.Message
 	
@@ -148,8 +163,27 @@ func stripCostomPrefixIfExists(event interface{}) interface{} {
 			return nil
 	}
 
-	if strings.HasPrefix(msg.Content, "!maze") {
-		msg.Content = strings.TrimPrefix(msg.Content, "!maze")
+	// Has the message prefix
+	var prefix string
+
+	// Get prefix from database
+	row := stuff.db.QueryRow("SELECT prefix FROM prefixes WHERE guild_id = $1",
+		strconv.FormatUint(uint64(msg.GuildID), 10))
+	err := row.Scan(&prefix)
+
+	if err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			prefix = stuff.config.General.Prefix
+		default:
+			stuff.logger.Error("Failed to retrive database results!",
+				zap.Uint64("guild_id", uint64(msg.GuildID)),
+				zap.Error(err))
+		}
+	}
+
+
+	if strings.HasPrefix(msg.Content, fmt.Sprint(prefix, "maze")) {
 		// Note that disgord.MessageCreate contains only a pointer to the
 		// message so dispite asigning the message to our own varible we still
 		// modified the event.
@@ -161,8 +195,7 @@ func stripCostomPrefixIfExists(event interface{}) interface{} {
 
 func main() {
 	// Set things up and connect to discord
-	var stuff stuff
-	stuff.initalize()
+	initalize()
 	defer stuff.client.Gateway().StayConnectedUntilInterrupted()
 	defer stuff.logger.Sync()
 	
@@ -177,7 +210,8 @@ func main() {
 	// BUG(iComputeDaily): No idea how big the buffer should be
 	msgEventChan := make(chan *disgord.MessageCreate, 100)
 	for workerNum := 0; workerNum < stuff.config.Technical.NumWorkers; workerNum++ {
-		go stuff.worker(msgEventChan)
+
+		go worker(msgEventChan)
 	}
 
 	// Create a filter so we can check if the message is by the bot
@@ -188,5 +222,4 @@ func main() {
 		std.CopyMsgEvt, // Copy the message so that other handlers don't have problems
 		stripCostomPrefixIfExists, // Checks to see if the message has the prefix, and if so removes
 		).MessageCreateChan(msgEventChan) // Push to channel
-										
 }
