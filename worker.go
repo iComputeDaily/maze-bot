@@ -4,6 +4,7 @@ import "github.com/andersfylling/disgord"
 import "context"
 import "fmt"
 import "strings"
+import "unicode/utf8"
 
 // Listens for messges in the channel and deals with them
 func worker(msgEvtChan <-chan *disgord.MessageCreate) {
@@ -20,8 +21,11 @@ func worker(msgEvtChan <-chan *disgord.MessageCreate) {
 				}
 				msg = data.Message
 
+				// Figure out how big the first rune is so we can properly get it in the next step
+				_, size := utf8.DecodeRuneInString(msg.Content)
+
 				// Get the prefix from the message
-				prefix := string(msg.Content[0])
+				prefix := string(msg.Content[0:size])
 
 				// Trim the prefix
 				msg.Content = strings.TrimPrefix(msg.Content, fmt.Sprint(prefix, "maze"))

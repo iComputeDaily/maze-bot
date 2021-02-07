@@ -12,4 +12,5 @@ require (
 	github.com/theodesp/unionfind v0.0.0-20200112172429-2bf90fd5b8c5 // indirect
 	github.com/yourbasic/graph v0.0.0-20170921192928-40eb135c0b26 // indirect
 	go.uber.org/zap v1.16.0
+	golang.org/x/text v0.3.3
 )

@@ -16,6 +16,7 @@ import "strings"
 import "database/sql"
 import _ "github.com/jackc/pgx/v4/stdlib"
 import "strconv"
+import "golang.org/x/text/unicode/norm"
 
 // Regex to match maze type
 var isTypeRegex *regexp.Regexp
@@ -89,7 +90,7 @@ func initalize() {
 	
 	// Setup logging
 	rawJSON := []byte(`{
-			"level": "info",
+			"level": "debug",
 			"encoding": "json",
 			"development": false,
 			"outputPaths": ["stdout"],
@@ -182,8 +183,12 @@ func stripCostomPrefixIfExists(event interface{}) interface{} {
 		}
 	}
 
+	// Normalize the prefix, and message to hopefully avoid unicode problems*crosses fingers*
+	msg.Content = norm.NFC.String(msg.Content)
+	stuff.logger.Debug("Normalized message", zap.String("msg.Content", msg.Content))
+	prefix = norm.NFC.String(fmt.Sprint(prefix, "maze"))
 
-	if strings.HasPrefix(msg.Content, fmt.Sprint(prefix, "maze")) {
+	if strings.HasPrefix(msg.Content, prefix) {
 		// Note that disgord.MessageCreate contains only a pointer to the
 		// message so dispite asigning the message to our own varible we still
 		// modified the event.
