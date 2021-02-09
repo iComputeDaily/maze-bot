@@ -15,7 +15,6 @@ import "encoding/json"
 import "strings"
 import "database/sql"
 import _ "github.com/jackc/pgx/v4/stdlib"
-import "strconv"
 import "golang.org/x/text/unicode/norm"
 
 // Regex to match maze type
@@ -37,6 +36,7 @@ type General struct {
 
 type Messages struct {
 	HelpMessage string
+	PrefixChangeMsg string
 	NoCmdError string
 	InvalidCmdError string
 	TooManyArgsError string
@@ -164,24 +164,7 @@ func stripCostomPrefixIfExists(event interface{}) interface{} {
 			return nil
 	}
 
-	// Has the message prefix
-	var prefix string
-
-	// Get prefix from database
-	row := stuff.db.QueryRow("SELECT prefix FROM prefixes WHERE guild_id = $1",
-		strconv.FormatUint(uint64(msg.GuildID), 10))
-	err := row.Scan(&prefix)
-
-	if err != nil {
-		switch err {
-		case sql.ErrNoRows:
-			prefix = stuff.config.General.Prefix
-		default:
-			stuff.logger.Error("Failed to retrive database results!",
-				zap.Uint64("guild_id", uint64(msg.GuildID)),
-				zap.Error(err))
-		}
-	}
+	prefix := getPrefix(msg.GuildID, stuff.db)
 
 	// Normalize the prefix, and message to hopefully avoid unicode problems*crosses fingers*
 	msg.Content = norm.NFC.String(msg.Content)
