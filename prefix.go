@@ -12,7 +12,7 @@ import "golang.org/x/text/unicode/norm"
 import "unicode"
 
 // Get prefix gets the prefix using the given object with the QueryRow method
-func getPrefix(guildID disgord.Snowflake, localDB interface{
+func getPrefix(guildID disgord.Snowflake, localDB interface {
 	QueryRow(query string, args ...interface{}) *sql.Row
 }) string {
 	// Has the message prefix
@@ -23,8 +23,10 @@ func getPrefix(guildID disgord.Snowflake, localDB interface{
 		strconv.FormatUint(uint64(guildID), 10))
 	err := row.Scan(&prefix)
 
+	// Note that it should never have serialization errors because isolation level is read commited.
 	if err != nil {
 		switch err {
+		// Set default prefix if none is stored
 		case sql.ErrNoRows:
 			prefix = stuff.config.General.Prefix
 		default:
@@ -38,6 +40,11 @@ func getPrefix(guildID disgord.Snowflake, localDB interface{
 }
 
 func setPrefix(msg *disgord.Message, prefix string) (string, error) {
+	// Error if is dm
+	if msg.IsDirectMessage() {
+		return "", errors.New("Prefix cannot be changed in direct message.")
+	}
+
 	// Get arguments from message
 	args := strings.Split(msg.Content, " ")
 
@@ -58,57 +65,67 @@ func setPrefix(msg *disgord.Message, prefix string) (string, error) {
 
 		default:
 			arg = norm.NFC.String(arg)
-		
+
 			if utf8.RuneCountInString(arg) > 1 {
-				return "", errors.New("Prefix too long.")
+				return "", errors.New(stuff.config.Messages.PrefixLegnthError)
 			}
-			
+
 			char, _ := utf8.DecodeRuneInString(arg)
-			if !unicode.IsOneOf(unicode.PrintRanges, char) {
-				return "", errors.New("Prefix must be a letter, number, symbol, puctuation charachter, or mark.")
+			if !unicode.In(char, unicode.L, unicode.N, unicode.P, unicode.S) {
+				return "", errors.New(stuff.config.Messages.PrefixTypeError)
 			}
-			
+
 			newPrefix = arg
 		}
 	}
-	
+
 	// Start a transaction to hopefully avoid conflicts*double crosses fingers*
 	tx, err := stuff.db.BeginTx(context.Background(),
-	&sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: false})
-	
+		&sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: false})
+
 	// Check the current prefix
 	oldPrefix := getPrefix(msg.GuildID, tx)
 
 	// Bug: Serialization failure not handled
 	switch {
-	// Same prefix 
+	// Same prefix
 	case newPrefix == oldPrefix:
 		return oldPrefix, nil
 
 	// Prefix is !
 	case newPrefix == stuff.config.General.Prefix:
 		_, err = tx.Exec("DELETE FROM prefixes WHERE guild_id = $1;",
-		strconv.FormatUint(uint64(msg.GuildID), 10))
+			strconv.FormatUint(uint64(msg.GuildID), 10))
 
 	// No Prefix
 	case oldPrefix == stuff.config.General.Prefix:
 		_, err = tx.Exec("INSERT INTO prefixes (guild_id, prefix) VALUES ($1, $2);",
-		strconv.FormatUint(uint64(msg.GuildID), 10), newPrefix)
+			strconv.FormatUint(uint64(msg.GuildID), 10), newPrefix)
 
-	// Otherwise 
+	// Otherwise
 	default:
 		_, err = tx.Exec("UPDATE prefixes SET prefix = $2 WHERE guild_id = $1;",
-		strconv.FormatUint(uint64(msg.GuildID), 10), newPrefix)
-		
+			strconv.FormatUint(uint64(msg.GuildID), 10), newPrefix)
 	}
 	// Handle errors
 	if err != nil {
+		rollbackErr := tx.Rollback()
+		switch {
+		case rollbackErr != nil:
+			stuff.logger.Error("Failed to rollback transaction",
+				zap.NamedError("dbError", err), zap.NamedError("rollbackError", rollbackErr))
+		default:
+			stuff.logger.Error("DB update failed, transaction rolled back sucsessfully.",
+				zap.Error(err))
+		}
+
 		return "", errors.New(stuff.config.Messages.GenericError)
 	}
 
 	// Commit transaction
 	err = tx.Commit()
 	if err != nil {
+		stuff.logger.Error("Failed to commit transaction.", zap.Error(err))
 		return "", errors.New(stuff.config.Messages.GenericError)
 	}
 

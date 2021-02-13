@@ -30,56 +30,56 @@ func getMaze(msg *disgord.Message, prefix string) (maze.Maze, error) {
 		isType := isTypeRegex.MatchString(arg)
 
 		switch {
-			// If the argument is empty
-			case arg == "":
-				// Do nothing
-				break
+		// If the argument is empty
+		case arg == "":
+			// Do nothing
+			break
 
-			// Too many argunments
-			case i >= 3:
+		// Too many argunments
+		case i >= 3:
+			// Substitute values and return error
+			tooManyArgsError := strings.ReplaceAll(stuff.config.Messages.TooManyArgsError, "<prefix>", prefix)
+			return nil, errors.New(tooManyArgsError)
+
+		// The argument is a size
+		case isSize:
+			// Seperate width from height
+			nums := strings.Split(arg, "x")
+
+			// Set the width and height to non-default
+			width, err = strconv.Atoi(nums[0])
+			if err != nil {
+				stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[0]), zap.String("MSG", msg.Content))
 				// Substitute values and return error
-				tooManyArgsError := strings.ReplaceAll(stuff.config.Messages.TooManyArgsError, "<prefix>", prefix)
-				return nil, errors.New(tooManyArgsError)
-
-			// The argument is a size
-			case isSize:
-				// Seperate width from height
-				nums := strings.Split(arg, "x")
-
-				// Set the width and height to non-default
-				width, err = strconv.Atoi(nums[0])
-				if err != nil {
-					stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[0]), zap.String("MSG", msg.Content))
-					// Substitute values and return error
-					genericError := strings.ReplaceAll(stuff.config.Messages.GenericError, "<prefix>", prefix)
-					return nil, errors.New(genericError)
-				}
-				height, err = strconv.Atoi(nums[1])
-				if err != nil {
-					stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[1]), zap.String("MSG", msg.Content))
-					// Substitute values and return error
-					genericError := strings.ReplaceAll(stuff.config.Messages.GenericError, "<prefix>", prefix)
-					return nil, errors.New(genericError)
-				}
-
-			// The argument is a type
-			case isType:
-				switch arg {
-				case "windy":
-					coolMaze = &maze.GTreeMaze{}
-				case "spikey":
-					coolMaze = &maze.KruskalMaze{}
-				case "loopy":
-					coolMaze = &maze.GTreeMaze{}
-					loopy = true
-				}
-
-			// The argument is invalid
-			default:
+				genericError := strings.ReplaceAll(stuff.config.Messages.GenericError, "<prefix>", prefix)
+				return nil, errors.New(genericError)
+			}
+			height, err = strconv.Atoi(nums[1])
+			if err != nil {
+				stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[1]), zap.String("MSG", msg.Content))
 				// Substitute values and return error
-				invalidArgError := strings.ReplaceAll(stuff.config.Messages.UnknownArgError, "<prefix>", prefix)
-				invalidArgError = strings.ReplaceAll(invalidArgError, "<argument>", arg)
-				return nil, errors.New(invalidArgError)
+				genericError := strings.ReplaceAll(stuff.config.Messages.GenericError, "<prefix>", prefix)
+				return nil, errors.New(genericError)
+			}
+
+		// The argument is a type
+		case isType:
+			switch arg {
+			case "windy":
+				coolMaze = &maze.GTreeMaze{}
+			case "spikey":
+				coolMaze = &maze.KruskalMaze{}
+			case "loopy":
+				coolMaze = &maze.GTreeMaze{}
+				loopy = true
+			}
+
+		// The argument is invalid
+		default:
+			// Substitute values and return error
+			invalidArgError := strings.ReplaceAll(stuff.config.Messages.UnknownArgError, "<prefix>", prefix)
+			invalidArgError = strings.ReplaceAll(invalidArgError, "<argument>", arg)
+			return nil, errors.New(invalidArgError)
 		}
 	}
 
