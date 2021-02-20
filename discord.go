@@ -1,35 +1,41 @@
 package main
 
-import "context"
-import "regexp"
-import "fmt"
-import "math/rand"
-import "time"
-import "os"
-import "io/ioutil"
-import toml "github.com/pelletier/go-toml"
-import "github.com/andersfylling/disgord"
-import "github.com/andersfylling/disgord/std"
-import "go.uber.org/zap"
-import "encoding/json"
-import "strings"
-import "database/sql"
-import _ "github.com/jackc/pgx/v4/stdlib"
-import "golang.org/x/text/unicode/norm"
+import (
+	// Random stuff
+	"context"
+	"io/ioutil"
+	"math/rand"
+	"time"
 
-// Regex to match maze type
-var isTypeRegex *regexp.Regexp
+	// Discord
+	"github.com/andersfylling/disgord"
+	"github.com/andersfylling/disgord/std"
 
-// Regex to match size
-var isSizeRegex *regexp.Regexp
+	// Text prossesing
+	"fmt"
+	"golang.org/x/text/unicode/norm"
+	"regexp"
+	"strings"
 
-// Regex to match command
-var isCmdRegex *regexp.Regexp
+	// Logging
+	"encoding/json"
+	"go.uber.org/zap"
 
-// Regrex to match seperations by space
-var spaceSepRegex *regexp.Regexp
+	// Disk storage libs
+	"database/sql"
+	_ "github.com/jackc/pgx/v4/stdlib"
+	toml "github.com/pelletier/go-toml"
+)
 
-// Represents config options related to discord
+// Regular expressions
+var (
+	isTypeRegex   *regexp.Regexp
+	isSizeRegex   *regexp.Regexp
+	isCmdRegex    *regexp.Regexp
+	spaceSepRegex *regexp.Regexp
+)
+
+// Config options related to discord
 type General struct {
 	ProjectName       string
 	Prefix            string
@@ -37,34 +43,37 @@ type General struct {
 	DefaultMazeHeight int
 }
 
+// Various messages for the discord bot to output
 type Messages struct {
-	HelpMessage       string
-	PrefixChangeMsg   string
-	NoCmdError        string
-	InvalidCmdError   string
-	TooManyArgsError  string
-	UnknownArgError   string
-	SizeError         string
-	GenericError      string
-	PrefixTypeError   string
-	PrefixLegnthError string
+	HelpMessage        string
+	PrefixChangeMsg    string
+	NoCmdError         string
+	InvalidCmdError    string
+	TooManyArgsError   string
+	UnknownArgError    string
+	SizeError          string
+	GenericError       string
+	PrefixTypeError    string
+	PrefixLegnthError  string
+	PrefixIsMsg        string
+	NewPrefixInDmError string
 }
 
-// Represents more technical config options
+// More technical config options
 type Technical struct {
 	NumWorkers int
 	BotToken   string
 	DBUrl      string
 }
 
-// Represents the config file
+// The config file
 type Config struct {
 	General   General
 	Messages  Messages
 	Technical Technical
 }
 
-// Holds global information for the server
+// Global information for the server
 type things struct {
 	config Config
 	logger *zap.Logger
@@ -82,15 +91,13 @@ func initalize() {
 	// Read the config file
 	file, err := ioutil.ReadFile("config.toml")
 	if err != nil {
-		fmt.Println("Failed to read config file:", err)
-		os.Exit(1)
+		panic(fmt.Sprint("Failed to read config file: ", err))
 	}
 
 	// Parse the data
 	err = toml.Unmarshal(file, &stuff.config)
 	if err != nil {
-		fmt.Println("Failed to parse file:", err)
-		os.Exit(1)
+		panic(fmt.Sprint("Failed to parse file: ", err))
 	}
 
 	// Setup logging
@@ -116,17 +123,15 @@ func initalize() {
 
 	var logCfg zap.Config
 	if err := json.Unmarshal(rawJSON, &logCfg); err != nil {
-		fmt.Println("failed to parse logger config:", err)
-		os.Exit(1)
+		panic(fmt.Sprint("failed to parse logger config: ", err))
 	}
 
 	stuff.logger, err = logCfg.Build()
 	if err != nil {
-		fmt.Println("Failed to create logger:", err)
-		os.Exit(1)
+		panic(fmt.Sprint("Failed to create logger: ", err))
 	}
 
-	// Do some bitmath
+	// Setup intent bitmask
 	var intent disgord.Intent
 	intent |= disgord.IntentDirectMessages
 	// intent |= disgord.IntentDirectMessageReactions
@@ -148,7 +153,6 @@ func initalize() {
 
 	// Setup the database
 	stuff.db, err = sql.Open("pgx", stuff.config.Technical.DBUrl)
-
 	if err != nil {
 		stuff.logger.Panic("Failed to establish a database connection!",
 			zap.String("URL", stuff.config.Technical.DBUrl), zap.Error(err))
@@ -168,6 +172,7 @@ func stripCostomPrefixIfExists(event interface{}) interface{} {
 	}
 	msg = msgEvt.Message
 
+	// Get the servers prefix
 	if msg.IsDirectMessage() {
 		prefix = "!"
 	} else {
@@ -178,6 +183,7 @@ func stripCostomPrefixIfExists(event interface{}) interface{} {
 	msg.Content = norm.NFC.String(msg.Content)
 	prefix = norm.NFC.String(fmt.Sprint(prefix, "maze"))
 
+	// Actualy return whats apropriate
 	if strings.HasPrefix(msg.Content, prefix) {
 		return event
 	} else {
@@ -186,7 +192,7 @@ func stripCostomPrefixIfExists(event interface{}) interface{} {
 }
 
 func main() {
-	// Set things up and connect to discord
+	// Set things up
 	initalize()
 	defer stuff.db.Close()
 	defer stuff.logger.Sync()
@@ -201,18 +207,29 @@ func main() {
 	// Set up channels and workers
 	// BUG(iComputeDaily): No idea how big the buffer should be
 	msgEventChan := make(chan *disgord.MessageCreate, 100)
+	mentionEventChan := make(chan *disgord.MessageCreate, 100)
 	for workerNum := 0; workerNum < stuff.config.Technical.NumWorkers; workerNum++ {
-		go worker(msgEventChan)
+		go worker(msgEventChan, mentionEventChan)
 	}
 
-	// Create a filter so we can check if the message is by the bot
+	// Create a filter
 	filter, _ := std.NewMsgFilter(context.Background(), stuff.client)
+	logFilter, _ := std.NewLogFilter(stuff.client) // Temp; add logging later.
+
+	// Register handler for messages that mention the bot
+	stuff.client.Gateway().WithMiddleware(filter.NotByBot,
+		// So that other handlers don't have problems
+		std.CopyMsgEvt,
+		logFilter.LogMsg,
+		filter.ContainsBotMention,
+	).MessageCreateChan(mentionEventChan)
 
 	// Register handler for messages with the prefix
-	stuff.client.Gateway().WithMiddleware(filter.NotByBot, // Make shure message isn't by the bot
-		std.CopyMsgEvt,            // Copy the message so that other handlers don't have problems
-		stripCostomPrefixIfExists, // Checks to see if the message has the prefix, and if so removes
-	).MessageCreateChan(msgEventChan) // Push to channel
+	stuff.client.Gateway().WithMiddleware(filter.NotByBot,
+		// So that other handlers don't have problems
+		std.CopyMsgEvt,
+		stripCostomPrefixIfExists,
+	).MessageCreateChan(msgEventChan)
 
 	// Connect ot discord and wait for something to halpen before we exit
 	stuff.client.Gateway().StayConnectedUntilInterrupted()

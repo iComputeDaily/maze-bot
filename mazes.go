@@ -7,17 +7,41 @@ import "github.com/iComputeDaily/maze"
 import "github.com/andersfylling/disgord"
 import "go.uber.org/zap"
 
+func parseSizeArg(msg *disgord.Message, prefix string, arg string) (width int, height int, err error) {
+	// Seperate width from height
+	nums := strings.Split(arg, "x")
+
+	// Set the width
+	width, err = strconv.Atoi(nums[0])
+	if err != nil {
+		stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[0]), zap.String("MSG", msg.Content))
+
+		// Substitute values and return
+		err = errors.New(strings.ReplaceAll(stuff.config.Messages.GenericError, "<prefix>", prefix))
+		return
+	}
+
+	// Set the height
+	height, err = strconv.Atoi(nums[1])
+	if err != nil {
+		stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[0]), zap.String("MSG", msg.Content))
+
+		// Substitute values and return
+		err = errors.New(strings.ReplaceAll(stuff.config.Messages.GenericError, "<prefix>", prefix))
+		return
+	}
+
+	return
+}
+
 func getMaze(msg *disgord.Message, prefix string) (maze.Maze, error) {
 	// Initalize arguments to defaults
-	var width = stuff.config.General.DefaultMazeWidth
-	var height = stuff.config.General.DefaultMazeHeight
-	var loopy = false
-
-	// idk
-	var err error
-
-	// Make a maze to hold the maze
-	var coolMaze maze.Maze = &maze.GTreeMaze{}
+	var (
+		width    int       = stuff.config.General.DefaultMazeWidth
+		height   int       = stuff.config.General.DefaultMazeHeight
+		loopy    bool      = false
+		coolMaze maze.Maze = &maze.GTreeMaze{}
+	)
 
 	// Get arguments from message
 	args := strings.Split(msg.Content, " ")
@@ -30,39 +54,24 @@ func getMaze(msg *disgord.Message, prefix string) (maze.Maze, error) {
 		isType := isTypeRegex.MatchString(arg)
 
 		switch {
-		// If the argument is empty
 		case arg == "":
-			// Do nothing
 			break
 
 		// Too many argunments
 		case i >= 3:
-			// Substitute values and return error
 			tooManyArgsError := strings.ReplaceAll(stuff.config.Messages.TooManyArgsError, "<prefix>", prefix)
 			return nil, errors.New(tooManyArgsError)
 
 		// The argument is a size
 		case isSize:
-			// Seperate width from height
-			nums := strings.Split(arg, "x")
+			// Avoid redecloration of width causing syntax error
+			var err error
 
-			// Set the width and height to non-default
-			width, err = strconv.Atoi(nums[0])
+			width, height, err = parseSizeArg(msg, prefix, arg)
 			if err != nil {
-				stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[0]), zap.String("MSG", msg.Content))
-				// Substitute values and return error
-				genericError := strings.ReplaceAll(stuff.config.Messages.GenericError, "<prefix>", prefix)
-				return nil, errors.New(genericError)
-			}
-			height, err = strconv.Atoi(nums[1])
-			if err != nil {
-				stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[1]), zap.String("MSG", msg.Content))
-				// Substitute values and return error
-				genericError := strings.ReplaceAll(stuff.config.Messages.GenericError, "<prefix>", prefix)
-				return nil, errors.New(genericError)
+				return nil, err
 			}
 
-		// The argument is a type
 		case isType:
 			switch arg {
 			case "windy":
@@ -76,7 +85,6 @@ func getMaze(msg *disgord.Message, prefix string) (maze.Maze, error) {
 
 		// The argument is invalid
 		default:
-			// Substitute values and return error
 			invalidArgError := strings.ReplaceAll(stuff.config.Messages.UnknownArgError, "<prefix>", prefix)
 			invalidArgError = strings.ReplaceAll(invalidArgError, "<argument>", arg)
 			return nil, errors.New(invalidArgError)
@@ -97,7 +105,7 @@ func getMaze(msg *disgord.Message, prefix string) (maze.Maze, error) {
 		coolMaze.Loopify()
 	}
 
-	// Set the position to outside the map so The player marker won't display
+	// Set the position to outside the map so the player marker won't display
 	coolMaze.SetPos(-1, -1)
 
 	return coolMaze, nil
