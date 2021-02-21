@@ -58,6 +58,7 @@ type Messages struct {
 	PrefixLegnthError  string
 	PrefixIsMsg        string
 	NewPrefixInDmError string
+	NoPermsError       string
 }
 
 // More technical config options

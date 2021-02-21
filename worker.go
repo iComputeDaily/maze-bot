@@ -51,6 +51,18 @@ func helpCmd(msg *disgord.Message, prefix string) {
 }
 
 func setPrefixCmd(msg *disgord.Message, prefix string) {
+	// Check if user has permission for command
+	permBit, err := msg.Member.GetPermissions(context.Background(), stuff.client)
+	if err != nil {
+		stuff.logger.Error("Failed to get premissions for member!")
+		msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", stuff.config.Messages.GenericError))
+		return
+	}
+	if !permBit.Contains(disgord.PermissionManageServer) {
+		msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", stuff.config.Messages.NoPermsError))
+		return
+	}
+
 	msg.Content = strings.TrimPrefix(msg.Content, "setPrefix")
 
 	// Set the prefix
