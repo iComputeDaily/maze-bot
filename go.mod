@@ -5,7 +5,7 @@ go 1.14
 replace github.com/iComputeDaily/maze => ../maze
 
 require (
-	github.com/andersfylling/disgord v0.26.1
+	github.com/andersfylling/disgord v0.26.9
 	github.com/iComputeDaily/maze v0.0.0-00010101000000-000000000000
 	github.com/jackc/pgx/v4 v4.10.1
 	github.com/pelletier/go-toml v1.8.1

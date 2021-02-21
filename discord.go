@@ -39,6 +39,7 @@ var (
 type General struct {
 	ProjectName       string
 	Prefix            string
+	StatusMessage     string
 	DefaultMazeWidth  int
 	DefaultMazeHeight int
 }
@@ -145,6 +146,15 @@ func initalize() {
 		ProjectName: stuff.config.General.ProjectName,
 	})
 
+	// Update status after 20 seconds(hopefully discord is connected by then)
+	go func() {
+		time.Sleep(20 * time.Second)
+		err = stuff.client.UpdateStatusString(stuff.config.General.StatusMessage)
+		if err != nil {
+			stuff.logger.DPanic("Failed to set the bots status!", zap.Error(err))
+		}
+	}()
+
 	// Set up regular expressions
 	isTypeRegex = regexp.MustCompile(`^(?i)spikey|windy|loopy$`)
 	isSizeRegex = regexp.MustCompile(`^(?i)-?\d+x-?\d+$`)
@@ -221,7 +231,7 @@ func main() {
 		// So that other handlers don't have problems
 		std.CopyMsgEvt,
 		logFilter.LogMsg,
-		filter.ContainsBotMention,
+		filter.HasBotMentionPrefix,
 	).MessageCreateChan(mentionEventChan)
 
 	// Register handler for messages with the prefix
@@ -231,6 +241,6 @@ func main() {
 		stripCostomPrefixIfExists,
 	).MessageCreateChan(msgEventChan)
 
-	// Connect ot discord and wait for something to halpen before we exit
+	// Connect to discord and wait for something to halpen before we exit
 	stuff.client.Gateway().StayConnectedUntilInterrupted()
 }
