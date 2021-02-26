@@ -1,24 +1,69 @@
 package main
 
 import "strconv"
-import "fmt"
 import "errors"
 import "strings"
 import "github.com/iComputeDaily/maze"
 import "github.com/andersfylling/disgord"
 import "go.uber.org/zap"
 
-func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
+func parseNum(strNum string, prefix string, logger *zap.SugaredLogger) (num int, err error) {
+	// Make shure size isn't so big it will break atoi
+	if !(len(strNum) <= 3) {
+		logger.Infow("Size is invalid", "Num", strNum)
+		return 0, errors.New(stuff.config.Messages.SizeError)
+	}
+
+	// Set the size
+	num, err = strconv.Atoi(strNum)
+
+	if err != nil {
+		logger.Errorw("Atoi is broken",
+			"Num", strNum,
+			"error", err,
+		)
+
+		// Substitute values and return
+		err = errors.New(strings.ReplaceAll(stuff.config.Messages.GenericError, "<prefix>", prefix))
+		return
+	}
+
+	// Check to make shure that the size is within limits
+	if !(num >= 2 && num <= 30) {
+		logger.Infow("Size is invalid", "Num", num)
+		return 0, errors.New(stuff.config.Messages.SizeError)
+	}
+
+	return
+}
+
+func parseSizeArg(prefix string, arg string, logger *zap.SugaredLogger) (width int, height int, err error) {
+	// Seperate width from height
+	nums := strings.Split(arg, "x")
+
+	// Set the width
+	width, err = parseNum(nums[0], prefix, logger)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	// Set the height
+	height, err = parseNum(nums[1], prefix, logger)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return
+}
+
+func getMaze(msg *disgord.Message, prefix string, logger *zap.SugaredLogger) (maze.Maze, *zap.SugaredLogger, error) {
 	// Initalize arguments to defaults
-	var width = stuff.config.General.DefaultMazeWidth
-	var height = stuff.config.General.DefaultMazeHeight
-	var loopy = false
-
-	// idk
-	var err error
-
-	// Make a maze to hold the maze
-	var coolMaze maze.Maze = &maze.GTreeMaze{}
+	var (
+		width    int       = stuff.config.General.DefaultMazeWidth
+		height   int       = stuff.config.General.DefaultMazeHeight
+		loopy    bool      = false
+		coolMaze maze.Maze = &maze.GTreeMaze{}
+	)
 
 	// Get arguments from message
 	args := strings.Split(msg.Content, " ")
@@ -31,54 +76,54 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 		isType := isTypeRegex.MatchString(arg)
 
 		switch {
-			// If the argument is empty
-			case arg == "":
-				// Do nothing
-				break
+		case arg == "":
+			break
 
-			// Too many argunments
-			case i >= 3:
-				return nil, errors.New("Too many arguments. Run `!maze help` for usage help.")
+		// Too many argunments
+		case i >= 3:
+			logger.Infow("Command has too many arguments")
 
-			// The argument is a size
-			case isSize:
-				// Seperate width from height
-				nums := strings.Split(arg, "x")
+			tooManyArgsError := strings.ReplaceAll(stuff.config.Messages.TooManyArgsError, "<prefix>", prefix)
+			return nil, logger, errors.New(tooManyArgsError)
 
-				// Set the width and height to non-default
-				width, err = strconv.Atoi(nums[0])
-				if err != nil {
-					stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[0]), zap.String("MSG", msg.Content))
-					return nil, errors.New("Something went wrong. Sorry")
-				}
-				height, err = strconv.Atoi(nums[1])
-				if err != nil {
-					stuff.logger.Error("Atoi is broken", zap.String("NUM", nums[1]), zap.String("MSG", msg.Content))
-					return nil, errors.New("Something went wrong. Sorry")
-				}
+		// The argument is a size
+		case isSize:
+			// Avoid redecloration of width causing syntax error
+			var err error
 
-			// The argument is a type
-			case isType:
-				switch arg {
-				case "windy":
-					coolMaze = &maze.GTreeMaze{}
-				case "spikey":
-					coolMaze = &maze.KruskalMaze{}
-				case "loopy":
-					coolMaze = &maze.GTreeMaze{}
-					loopy = true
-				}
+			width, height, err = parseSizeArg(prefix, arg, logger)
+			if err != nil {
+				return nil, logger, err
+			}
 
-			// The argument is invaled
-			default:
-				return nil, errors.New(fmt.Sprintln("Unknown argument `", arg, "`. Run `!maze help` for usage help."))
+			// Add size logging context
+			logger = logger.With(
+				"Width", width,
+				"Height", height,
+			)
+
+		case isType:
+			switch arg {
+			case "windy":
+				logger = logger.With("MazeType", "windy")
+				coolMaze = &maze.GTreeMaze{}
+			case "spikey":
+				logger = logger.With("MazeType", "spikey")
+				coolMaze = &maze.KruskalMaze{}
+			case "loopy":
+				logger = logger.With("MazeType", "loopy")
+				coolMaze = &maze.GTreeMaze{}
+				loopy = true
+			}
+
+		// The argument is invalid
+		default:
+			logger.Infow("Command has invalid argument", "Argument", arg)
+
+			invalidArgError := strings.ReplaceAll(stuff.config.Messages.UnknownArgError, "<prefix>", prefix)
+			invalidArgError = strings.ReplaceAll(invalidArgError, "<argument>", arg)
+			return nil, logger, errors.New(invalidArgError)
 		}
-	}
-
-	// Check to make shure that the size is within limits
-	if !(width >= 2 && width <= 30 &&
-		height >= 2 && height <= 30) {
-		return nil, errors.New("Size must be at least `2x2`, and at most `30x30`(due to discords charachter limit)")
 	}
 
 	// Generate a maze
@@ -89,8 +134,8 @@ func (stuff *stuff) getMaze(msg *disgord.Message) (maze.Maze, error) {
 		coolMaze.Loopify()
 	}
 
-	// Set the position to outside the map so The player marker won't display
+	// Set the position to outside the map so the player marker won't display
 	coolMaze.SetPos(-1, -1)
 
-	return coolMaze, nil
+	return coolMaze, logger, nil
 }

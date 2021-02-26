@@ -1,13 +1,16 @@
 module maze-bot
 
-go 1.15
-
-require (
-	github.com/andersfylling/disgord v0.23.2
-	github.com/iComputeDaily/maze v0.0.0-20201221151754-d45f4b24396a
-	github.com/pelletier/go-toml v1.8.1
-	github.com/sirupsen/logrus v1.7.0
-	go.uber.org/zap v1.16.0
-)
+go 1.14
 
 replace github.com/iComputeDaily/maze => ../maze
+
+require (
+	github.com/andersfylling/disgord v0.26.9
+	github.com/iComputeDaily/maze v0.0.0-00010101000000-000000000000
+	github.com/jackc/pgx/v4 v4.10.1
+	github.com/pelletier/go-toml v1.8.1
+	github.com/theodesp/unionfind v0.0.0-20200112172429-2bf90fd5b8c5 // indirect
+	github.com/yourbasic/graph v0.0.0-20170921192928-40eb135c0b26 // indirect
+	go.uber.org/zap v1.16.0
+	golang.org/x/text v0.3.3
+)
