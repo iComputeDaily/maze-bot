@@ -146,7 +146,7 @@ func worker(msgEvtChan <-chan *disgord.MessageCreate,
 			msg = data.Message
 
 			ctxLogger := addMsgFeilds(msg, stuff.logger)
-			ctxLogger = stuff.logger.With(
+			ctxLogger = ctxLogger.With(
 				"Type", "mention",
 			)
 
@@ -199,7 +199,7 @@ func worker(msgEvtChan <-chan *disgord.MessageCreate,
 
 			default:
 				ctxLogger := addMsgFeilds(msg, stuff.logger)
-				ctxLogger = stuff.logger.With(
+				ctxLogger = ctxLogger.With(
 					"Prefix", prefix,
 					"Type", "invalidCmd",
 				)
