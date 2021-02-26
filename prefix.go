@@ -30,16 +30,14 @@ func getPrefix(guildID disgord.Snowflake, localDB interface {
 		case sql.ErrNoRows:
 			prefix = stuff.config.General.Prefix
 		default:
-			stuff.logger.Error("Failed to retrive database results!",
-				zap.Uint64("guild_id", uint64(guildID)),
-				zap.Error(err))
+			prefix = stuff.config.General.Prefix
 		}
 	}
 
 	return prefix
 }
 
-func setPrefixTx(msg *disgord.Message, newPrefix string) error {
+func setPrefixTx(msg *disgord.Message, newPrefix string, logger *zap.SugaredLogger) error {
 	// Start a transaction to hopefully avoid conflicts*double crosses fingers*
 	tx, err := stuff.db.BeginTx(context.Background(),
 		&sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: false})
@@ -73,11 +71,12 @@ func setPrefixTx(msg *disgord.Message, newPrefix string) error {
 		rollbackErr := tx.Rollback()
 		switch {
 		case rollbackErr != nil:
-			stuff.logger.Error("Failed to rollback transaction",
-				zap.NamedError("dbError", err), zap.NamedError("rollbackError", rollbackErr))
+			logger.Errorw("Failed to rollback transaction",
+				"dbError", err,
+				"rollbackError", rollbackErr,
+			)
 		default:
-			stuff.logger.Error("DB update failed, transaction rolled back sucsessfully.",
-				zap.Error(err))
+			logger.Errorw("DB update failed, transaction rolled back sucsessfully.", "error", err)
 		}
 
 		return err
@@ -86,17 +85,13 @@ func setPrefixTx(msg *disgord.Message, newPrefix string) error {
 	// Commit transaction
 	err = tx.Commit()
 	if err != nil {
-		stuff.logger.Error("Failed to commit transaction.", zap.Error(err))
+		logger.Errorw("Failed to commit transaction.", "error", err)
 		return err
 	}
 	return nil
 }
 
-func setPrefix(msg *disgord.Message, prefix string) (newPrefix string, err error) {
-	if msg.IsDirectMessage() {
-		return "", errors.New(stuff.config.Messages.NewPrefixInDmError)
-	}
-
+func setPrefix(msg *disgord.Message, prefix string, logger *zap.SugaredLogger) (newPrefix string, err error) {
 	// Get arguments from message
 	args := strings.Split(msg.Content, " ")
 
@@ -108,7 +103,8 @@ func setPrefix(msg *disgord.Message, prefix string) (newPrefix string, err error
 			break
 
 		case i >= 2:
-			// Substitute values and return error
+			logger.Infow("Command has too many arguments")
+			// Reply with error
 			tooManyArgsError := strings.ReplaceAll(stuff.config.Messages.TooManyArgsError, "<prefix>", prefix)
 			return "", errors.New(tooManyArgsError)
 
@@ -116,28 +112,36 @@ func setPrefix(msg *disgord.Message, prefix string) (newPrefix string, err error
 			arg = norm.NFC.String(arg)
 
 			if utf8.RuneCountInString(arg) > 1 {
+				logger.Infow("Prefix has too many charachters", "Argument", arg)
 				return "", errors.New(stuff.config.Messages.PrefixLegnthError)
 			}
 
 			char, _ := utf8.DecodeRuneInString(arg)
 			if !unicode.In(char, unicode.L, unicode.N, unicode.P, unicode.S) {
+				logger.Infow("Prefix charachter is not of allowed type", "Argument", arg)
 				return "", errors.New(stuff.config.Messages.PrefixTypeError)
 			}
 
 			newPrefix = arg
+			logger = logger.With("NewPrefix", newPrefix)
 		}
 	}
 
 	// Try to set the prefix 3 times with backoff
 	for i := 0; i < 3; i++ {
-		err = setPrefixTx(msg, newPrefix)
+		err = setPrefixTx(msg, newPrefix, logger)
 		if err == nil || i == 2 {
 			break
 		}
+		logger.Warnw("Failed atempt to set prefix",
+			"error", err,
+			"AttemptNum", i+1,
+		)
 		time.Sleep(time.Duration(i) * time.Second)
 	}
 
 	if err != nil {
+		logger.Errorw("Failed to Set the prefix", "error", err)
 		return "", errors.New(stuff.config.Messages.GenericError)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"io/ioutil"
 	"math/rand"
+	"os"
 	"time"
 
 	// Discord
@@ -63,9 +64,11 @@ type Messages struct {
 
 // More technical config options
 type Technical struct {
-	NumWorkers int
-	BotToken   string
-	DBUrl      string
+	NumWorkers            int
+	BotToken              string
+	DBUrl                 string
+	DevelopmentLoggerConf string
+	ProductionLoggerConf  string
 }
 
 // The config file
@@ -78,7 +81,7 @@ type Config struct {
 // Global information for the server
 type things struct {
 	config Config
-	logger *zap.Logger
+	logger *zap.SugaredLogger
 	client *disgord.Client
 	db     *sql.DB
 }
@@ -103,35 +106,25 @@ func initalize() {
 	}
 
 	// Setup logging
-	rawJSON := []byte(`{
-			"level": "debug",
-			"encoding": "json",
-			"development": false,
-			"outputPaths": ["stdout"],
-			"encoderConfig": {
-				"timeEncoder": "rfc3339",
-				"levelEncoder": "capital",
-				"durationEncoder": "string",
-				"callerEncoder": "short",
+	var rawJSON []byte
 
-				"callerKey":      "CALLER",
-				"nameKey":        "NAME",
-				"timeKey":        "TIME",
-				"levelKey":       "LVL",
-				"messageKey":     "MSG",
-				"stacktraceKey":  "STACKTRACE"
-			}
-		}`)
+	if os.Getenv("DEVELOPMENT") == "true" {
+		rawJSON = []byte(stuff.config.Technical.DevelopmentLoggerConf)
+	} else {
+		rawJSON = []byte(stuff.config.Technical.ProductionLoggerConf)
+	}
 
 	var logCfg zap.Config
 	if err := json.Unmarshal(rawJSON, &logCfg); err != nil {
 		panic(fmt.Sprint("failed to parse logger config: ", err))
 	}
 
-	stuff.logger, err = logCfg.Build()
+	unsugered, err := logCfg.Build()
 	if err != nil {
 		panic(fmt.Sprint("Failed to create logger: ", err))
 	}
+
+	stuff.logger = unsugered.Sugar()
 
 	// Setup intent bitmask
 	var intent disgord.Intent
@@ -143,7 +136,7 @@ func initalize() {
 	stuff.client = disgord.New(disgord.Config{
 		BotToken:    stuff.config.Technical.BotToken,
 		Intents:     intent,
-		Logger:      stuff.logger.Sugar(),
+		Logger:      stuff.logger,
 		ProjectName: stuff.config.General.ProjectName,
 	})
 
@@ -152,7 +145,7 @@ func initalize() {
 		time.Sleep(20 * time.Second)
 		err = stuff.client.UpdateStatusString(stuff.config.General.StatusMessage)
 		if err != nil {
-			stuff.logger.DPanic("Failed to set the bots status!", zap.Error(err))
+			stuff.logger.DPanicw("Failed to set the bots status!", "error", err)
 		}
 	}()
 
@@ -165,8 +158,9 @@ func initalize() {
 	// Setup the database
 	stuff.db, err = sql.Open("pgx", stuff.config.Technical.DBUrl)
 	if err != nil {
-		stuff.logger.Panic("Failed to establish a database connection!",
-			zap.String("URL", stuff.config.Technical.DBUrl), zap.Error(err))
+		stuff.logger.Panicw("Failed to establish a database connection!",
+			"URL", stuff.config.Technical.DBUrl,
+			"error", err)
 	}
 }
 
@@ -211,9 +205,9 @@ func main() {
 	// Print invite link
 	inviteURL, err := stuff.client.BotAuthorizeURL()
 	if err != nil {
-		stuff.logger.DPanic("Failed to create invite link!", zap.Error(err))
+		stuff.logger.DPanicw("Failed to create invite link!", "error", err)
 	}
-	stuff.logger.Info("Invite url", zap.String("URL", inviteURL.String()))
+	stuff.logger.Infow("Invite url", "URL", inviteURL)
 
 	// Set up channels and workers
 	// BUG(iComputeDaily): No idea how big the buffer should be
@@ -225,13 +219,11 @@ func main() {
 
 	// Create a filter
 	filter, _ := std.NewMsgFilter(context.Background(), stuff.client)
-	logFilter, _ := std.NewLogFilter(stuff.client) // Temp; add logging later.
 
 	// Register handler for messages that mention the bot
 	stuff.client.Gateway().WithMiddleware(filter.NotByBot,
 		// So that other handlers don't have problems
 		std.CopyMsgEvt,
-		logFilter.LogMsg,
 		filter.HasBotMentionPrefix,
 	).MessageCreateChan(mentionEventChan)
 

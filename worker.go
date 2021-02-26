@@ -9,7 +9,17 @@ import (
 	"unicode/utf8"
 )
 
-func mentionGetPrefix(msg *disgord.Message) {
+func addMsgFeilds(msg *disgord.Message, logger *zap.SugaredLogger) *zap.SugaredLogger {
+	return stuff.logger.With(
+		"UsrID", msg.Author.ID,
+		"UsrName", msg.Author.Tag(),
+		"MsgID", msg.ID,
+		"GuildID", msg.GuildID,
+		"MsgContent", msg.Content,
+	)
+}
+
+func mentionGetPrefix(msg *disgord.Message, logger *zap.SugaredLogger) {
 	// Get the server prefix
 	var prefix string
 
@@ -25,15 +35,15 @@ func mentionGetPrefix(msg *disgord.Message) {
 	// Reply with prefix
 	msg.Reply(context.Background(), stuff.client, prefixIsMsg)
 
-	// DEBUGGING
-	stuff.logger.Debug("Mention recived", zap.String("message", prefixIsMsg))
+	// Logging
+	logger.Infow("Mention recived")
 }
 
-func genCmd(msg *disgord.Message, prefix string) {
+func genCmd(msg *disgord.Message, prefix string, logger *zap.SugaredLogger) {
 	msg.Content = strings.TrimPrefix(msg.Content, "gen")
 
 	// Get the maze from the message
-	coolMaze, err := getMaze(msg, prefix)
+	coolMaze, logger, err := getMaze(msg, prefix, logger)
 	if err != nil {
 		msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", err))
 		return
@@ -41,24 +51,36 @@ func genCmd(msg *disgord.Message, prefix string) {
 
 	// Reply to the message with the maze
 	msg.Reply(context.Background(), stuff.client, "```maze\n"+coolMaze.Stringify()+"```")
+
+	// Logging
+	logger.Infow("Maze gen request recived")
 }
 
-func helpCmd(msg *disgord.Message, prefix string) {
-	// Replace placeholders in help message
-	helpMsg := strings.ReplaceAll(stuff.config.Messages.HelpMessage, "<prefix>", prefix)
+func helpCmd(msg *disgord.Message, prefix string, logger *zap.SugaredLogger) {
 	// Reply with help
+	helpMsg := strings.ReplaceAll(stuff.config.Messages.HelpMessage, "<prefix>", prefix)
 	msg.Reply(context.Background(), stuff.client, helpMsg)
+
+	// Logging
+	logger.Infow("Help message request recived")
 }
 
-func setPrefixCmd(msg *disgord.Message, prefix string) {
+func setPrefixCmd(msg *disgord.Message, prefix string, logger *zap.SugaredLogger) {
+	if msg.IsDirectMessage() {
+		logger.Infow("Tried to change the prefix in dm")
+		msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", stuff.config.Messages.NewPrefixInDmError))
+		return
+	}
+
 	// Check if user has permission for command
 	permBit, err := msg.Member.GetPermissions(context.Background(), stuff.client)
 	if err != nil {
-		stuff.logger.Error("Failed to get premissions for member!")
+		logger.Errorw("Failed to get premissions for member!")
 		msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", stuff.config.Messages.GenericError))
 		return
 	}
 	if !permBit.Contains(disgord.PermissionManageServer) {
+		logger.Infow("Did not have sufficent permissions to change prefix")
 		msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", stuff.config.Messages.NoPermsError))
 		return
 	}
@@ -66,7 +88,7 @@ func setPrefixCmd(msg *disgord.Message, prefix string) {
 	msg.Content = strings.TrimPrefix(msg.Content, "setPrefix")
 
 	// Set the prefix
-	newPrefix, err := setPrefix(msg, prefix)
+	newPrefix, err := setPrefix(msg, prefix, logger)
 	if err != nil {
 		msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", err))
 		return
@@ -78,21 +100,26 @@ func setPrefixCmd(msg *disgord.Message, prefix string) {
 
 	// Send message to inform user of changes
 	msg.Reply(context.Background(), stuff.client, prefixChangeMsg)
+
+	// Logging
+	logger.Infow("Changed prefix", "NewPrefix", newPrefix)
 }
 
-func invalidCmd(msg *disgord.Message, prefix string) {
+func invalidCmd(msg *disgord.Message, prefix string, logger *zap.SugaredLogger) {
 	// Find the leftmost command
 	cmd := spaceSepRegex.FindString(msg.Content)
 
 	// If the user didn't input a command
 	if cmd == "" {
-		// Subsitute values
-		noCmdError := strings.ReplaceAll(stuff.config.Messages.NoCmdError, "<prefix>", prefix)
+		logger.Infow("No command provided")
 
 		// Reply with message
+		noCmdError := strings.ReplaceAll(stuff.config.Messages.NoCmdError, "<prefix>", prefix)
 		msg.Reply(context.Background(), stuff.client, fmt.Sprintln("Error:", noCmdError))
 		return
 	}
+
+	logger.Infow("Invalid command", "Command", cmd)
 
 	// Subsitute values
 	invalidCmdError := strings.ReplaceAll(stuff.config.Messages.InvalidCmdError, "<prefix>", prefix)
@@ -118,7 +145,12 @@ func worker(msgEvtChan <-chan *disgord.MessageCreate,
 			}
 			msg = data.Message
 
-			mentionGetPrefix(msg)
+			ctxLogger := addMsgFeilds(msg, stuff.logger)
+			ctxLogger = stuff.logger.With(
+				"Type", "mention",
+			)
+
+			mentionGetPrefix(msg, ctxLogger)
 
 		case data, ok := <-msgEvtChan:
 			// Get the message
@@ -142,16 +174,36 @@ func worker(msgEvtChan <-chan *disgord.MessageCreate,
 
 			switch {
 			case strings.HasPrefix(msg.Content, "gen"):
-				genCmd(msg, prefix)
+				ctxLogger := addMsgFeilds(msg, stuff.logger)
+				ctxLogger = ctxLogger.With(
+					"Prefix", prefix,
+					"Type", "genCmd",
+				)
+				genCmd(msg, prefix, ctxLogger)
 
 			case strings.HasPrefix(msg.Content, "help"):
-				helpCmd(msg, prefix)
+				ctxLogger := addMsgFeilds(msg, stuff.logger)
+				ctxLogger = ctxLogger.With(
+					"Prefix", prefix,
+					"Type", "helpCmd",
+				)
+				helpCmd(msg, prefix, ctxLogger)
 
 			case strings.HasPrefix(msg.Content, "setPrefix"):
-				setPrefixCmd(msg, prefix)
+				ctxLogger := addMsgFeilds(msg, stuff.logger)
+				ctxLogger = ctxLogger.With(
+					"Prefix", prefix,
+					"Type", "setPrefixCmd",
+				)
+				setPrefixCmd(msg, prefix, ctxLogger)
 
 			default:
-				invalidCmd(msg, prefix)
+				ctxLogger := addMsgFeilds(msg, stuff.logger)
+				ctxLogger = stuff.logger.With(
+					"Prefix", prefix,
+					"Type", "invalidCmd",
+				)
+				invalidCmd(msg, prefix, ctxLogger)
 			}
 		}
 	}
